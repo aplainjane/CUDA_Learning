@@ -1,0 +1,37 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build CUDA",
+            "type": "shell",
+            "command": "nvcc",
+            "args": [
+                "-g", "-G",  // 加调试符号（-g: CPU, -G: GPU）
+                "-o", 
+                "${fileDirname}/${fileBasenameNoExtension}", 
+                "${file}"
+            ],
+            "group": "build",
+            "presentation": { 
+                "echo": true, 
+                "reveal": "always", 
+                "focus": false 
+            },
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "run CUDA",
+            "type": "shell",
+            "command": "${fileDirname}/${fileBasenameNoExtension}",
+            "args": [],  // 无额外参数，可加如 ["--debug"] 如果需要
+            "dependsOn": "build CUDA",  // 先运行编译任务
+            "group": "build",
+            "presentation": { 
+                "echo": true, 
+                "reveal": "always", 
+                "focus": false 
+            },
+            "problemMatcher": []
+        }
+    ]
+}

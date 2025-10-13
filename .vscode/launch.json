@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "CUDA C++: Launch",  // 标准名称，便于识别
+            "type": "cuda-gdb",  // 保持不变，这是 Nsight 提供的类型
+            "request": "launch",
+            "program": "${fileDirname}/${fileBasenameNoExtension}",  // 动态指向可执行文件
+            "args": [],  // 命令行参数，如果需要加如 ["input.txt"]
+            "cwd": "${fileDirname}",  // 工作目录
+            "preLaunchTask": "build CUDA",  // 先编译
+            "miDebuggerPath": "/usr/bin/cuda-gdb",  // 修正：用 debuggerPath 而非 miDebuggerPath,
+        }
+    ]
+}
