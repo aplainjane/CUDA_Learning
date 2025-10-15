@@ -9,7 +9,7 @@
             "args": [],  // 命令行参数，如果需要加如 ["input.txt"]
             "cwd": "${fileDirname}",  // 工作目录
             "preLaunchTask": "build CUDA",  // 先编译
-            "miDebuggerPath": "/usr/bin/cuda-gdb",  // 修正：用 debuggerPath 而非 miDebuggerPath,
+            "miDebuggerPath": "/usr/bin/cuda-gdb",  // CUDA-GDB 的路径
         }
     ]
 }
