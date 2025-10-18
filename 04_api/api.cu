@@ -133,6 +133,17 @@ int main(int argc, char** argv) {
     std::cout << "  Maximum memory pitch                          " << deviceProp.memPitch << " bytes" << std::endl;
 
     std::cout << "Result = PASS" << std::endl;  // 成功指示
+    
+    // 打印设备属性详细信息
+    std::cout << "----------------------------------------------------------" << std::endl;
+    std::cout << "Number of multiprocessors:                      " << deviceProp.multiProcessorCount << std::endl;
+    std::cout << std::fixed << std::setprecision(2) << "Total amount of constant memory:                " << (deviceProp.totalConstMem / 1024.0) << " KB" << std::endl;
+    std::cout << std::fixed << std::setprecision(2) << "Total amount of shared memory per block:        " << (deviceProp.sharedMemPerBlock / 1024.0) << " KB" << std::endl;
+    std::cout << "Total number of registers available per block:  " << deviceProp.regsPerBlock << std::endl;
+    std::cout << "Warp size                                       " << deviceProp.warpSize << std::endl;
+    std::cout << "Maximum number of threads per block:            " << deviceProp.maxThreadsPerBlock << std::endl;
+    std::cout << "Maximum number of threads per multiprocessor:  " << deviceProp.maxThreadsPerMultiProcessor << std::endl;
+    std::cout << "Maximum number of warps per multiprocessor:     " << (deviceProp.maxThreadsPerMultiProcessor / 32) << std::endl;
 
     return EXIT_SUCCESS;
 }
