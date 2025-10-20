@@ -5,8 +5,8 @@
 #include <cstdlib>  // for rand
 #include <cstdio>   // for printf
 
-#define N (1<<20)  // 数组大小
-#define BLOCK_SIZE 1024
+#define N (1<<24)  // 数组大小
+#define BLOCK_SIZE 128
 
 // 结构体定义：必须在所有使用前完整定义
 struct NaiveStruct {
