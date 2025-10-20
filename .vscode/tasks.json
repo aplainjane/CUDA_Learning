@@ -20,11 +20,44 @@
             "problemMatcher": ["$gcc"]
         },
         {
+            "label": "build CUDA L1",
+            "type": "shell",
+            "command": "nvcc",
+            "args": [
+                "-g", "-G",  // 加调试符号（-g: CPU, -G: GPU）
+                "-Xptxas", "-dlcm=ca",  // 启用 L1 缓存（cache all global loads）
+                "-o", 
+                "${fileDirname}/${fileBasenameNoExtension}", 
+                "${file}"
+            ],
+            "group": "build",
+            "presentation": { 
+                "echo": true, 
+                "reveal": "always", 
+                "focus": false 
+            },
+            "problemMatcher": ["$gcc"]
+        },
+        {
             "label": "run CUDA",
             "type": "shell",
             "command": "${fileDirname}/${fileBasenameNoExtension}",
             "args": [],  // 无额外参数，可加如 ["--debug"] 如果需要
             "dependsOn": "build CUDA",  // 先运行编译任务
+            "group": "build",
+            "presentation": { 
+                "echo": true, 
+                "reveal": "always", 
+                "focus": false 
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "run CUDA L1",
+            "type": "shell",
+            "command": "${fileDirname}/${fileBasenameNoExtension}",
+            "args": [],  // 无额外参数，可加如 ["--debug"] 如果需要
+            "dependsOn": "build CUDA L1",  // 先运行编译任务
             "group": "build",
             "presentation": { 
                 "echo": true, 
