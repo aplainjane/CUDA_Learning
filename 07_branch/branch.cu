@@ -121,6 +121,35 @@ __global__ void reduceUnrolled(int* g_idata, int* g_odata, unsigned int n) {
     }
 }
 
+// GPU内核5：reduceShared（使用共享内存的交错配对版本）
+__global__ void reduceShared(int* g_idata, int* g_odata, unsigned int n) {
+    extern __shared__ int sdata[];  // 声明动态共享内存
+    unsigned int tid = threadIdx.x;  // 获取线程ID
+    unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;  // 获取全局索引
+    unsigned int bid = blockIdx.x;  // 获取块ID
+
+    // 将全局内存数据加载到共享内存（处理边界情况）
+    if (idx < n) {
+        sdata[tid] = g_idata[idx];
+    } else {
+        sdata[tid] = 0;  // 填充边界外的值为0
+    }
+    __syncthreads();  // 同步，确保所有线程加载完成
+
+    // 在共享内存中进行交错配对归约
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            sdata[tid] += sdata[tid + stride];  // 对配对元素求和
+        }
+        __syncthreads();  // 块内同步
+    }
+
+    // 线程0将块结果写入全局输出
+    if (tid == 0) {
+        g_odata[bid] = sdata[0];
+    }
+}
+
 // 工具函数：对GPU块的部分结果求和
 int sumPartialResults(int* partials, int numBlocks) {
     int sum = 0;  // 初始化总和
@@ -131,8 +160,8 @@ int sumPartialResults(int* partials, int numBlocks) {
 }
 
 int main() {
-    const int size = 1 << 24;  // 数组大小：16M元素（2的幂）
-    const int blockSize = 256;  // 每个块的线程数
+    const int size = 1 << 26;  // 数组大小：16M元素（2的幂）
+    const int blockSize = 128;  // 每个块的线程数
     const int numBlocks = (size + blockSize - 1) / blockSize;  // 计算块数(向上取整)
 
     // 主机内存分配
@@ -201,6 +230,16 @@ int main() {
     cudaMemcpy(h_odata, d_odata, numBlocks * sizeof(int), cudaMemcpyDeviceToHost);
     int gpu4_sum = sumPartialResults(h_odata, numBlocks);
 
+   // GPU内核5：reduceShared（共享内存版本）
+    cudaMemcpy(d_idata, h_idata, size * sizeof(int), cudaMemcpyHostToDevice);  // 重新复制输入
+    auto gpu5_start = std::chrono::high_resolution_clock::now();
+    reduceShared<<<grid, block, blockSize * sizeof(int)>>>(d_idata, d_odata, size);  // 启动内核，指定共享内存大小
+    cudaDeviceSynchronize();
+    auto gpu5_end = std::chrono::high_resolution_clock::now();
+    double gpu5_time = std::chrono::duration<double, std::milli>(gpu5_end - gpu5_start).count();
+    cudaMemcpy(h_odata, d_odata, numBlocks * sizeof(int), cudaMemcpyDeviceToHost);
+    int gpu5_sum = sumPartialResults(h_odata, numBlocks);
+
     // 输出结果
     std::cout << "数组大小: " << size << std::endl;
     std::cout << "CPU 求和: " << cpu_sum << ", 时间: " << cpu_time << " ms" << std::endl;
@@ -208,7 +247,8 @@ int main() {
     std::cout << "GPU reduceNeighboredLess 求和: " << gpu2_sum << ", 时间: " << gpu2_time << " ms" << std::endl;
     std::cout << "GPU reduceInterleaved 求和: " << gpu3_sum << ", 时间: " << gpu3_time << " ms" << std::endl;
     std::cout << "GPU reduceUnrolled（循环展开） 求和: " << gpu4_sum << ", 时间: " << gpu4_time << " ms" << std::endl;
-
+    std::cout << "GPU reduceShared（共享内存） 求和: " << gpu5_sum << ", 时间: " << gpu5_time << " ms" << std::endl;
+    
     // 清理内存
     delete[] h_idata;
     delete[] h_odata;
