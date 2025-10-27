@@ -9,6 +9,7 @@
 #define NXY (NX * NY)
 #define BLOCK_X 16
 #define BLOCK_Y 16
+#define BLOCK_DIM 16  // For shared memory tile size (square)
 
 #define CHECK_CUDA(call) { \
     cudaError_t err = call; \
@@ -50,28 +51,65 @@ __global__ void copyCol(float* A, float* B, int nx, int ny) {
     }
 }
 
-// Naive 转置（行读，列写）
+// Naive 转置（行读，列写） - 修正索引bug
 __global__ void transposeNaive(float* A, float* B, int nx, int ny) {
     int ix = threadIdx.x + blockIdx.x * blockDim.x;
     int iy = threadIdx.y + blockIdx.y * blockDim.y;
     if (ix < nx && iy < ny) {
-        int idx_row = ix + iy * nx;
-        int idx_col = ix * ny + iy;
-        B[idx_col] = A[idx_row];
+        int a_idx = iy * nx + ix;  // A[row * nx + col]
+        int b_idx = ix * ny + iy;  // B[col * ny + row]
+        B[b_idx] = A[a_idx];
     }
 }
 
-// 展开转置（列读，行写 + 4x unroll）
+// 展开转置（行读，列写 + 4x unroll） - 修正索引bug，并调整为正确偏移
 __global__ void transposeUnrolled(float* A, float* B, int nx, int ny) {
     int ix = threadIdx.x + blockIdx.x * blockDim.x * 4;
     int iy = threadIdx.y + blockIdx.y * blockDim.y;
     if (ix < nx && iy < ny) {
-        int idx_col = ix * ny + iy;
-        int idx_row = ix + iy * nx;
-        B[idx_row] = A[idx_col];
-        if (ix + blockDim.x < nx) B[idx_row + blockDim.x] = A[idx_col + ny * blockDim.x];
-        if (ix + 2 * blockDim.x < nx) B[idx_row + 2 * blockDim.x] = A[idx_col + ny * 2 * blockDim.x];
-        if (ix + 3 * blockDim.x < nx) B[idx_row + 3 * blockDim.x] = A[idx_col + ny * 3 * blockDim.x];
+        int a_idx = iy * nx + ix;
+        int b_idx = ix * ny + iy;
+        B[b_idx] = A[a_idx];
+        if (ix + blockDim.x < nx) {
+            int a_idx_k = iy * nx + (ix + blockDim.x);
+            int b_idx_k = (ix + blockDim.x) * ny + iy;
+            B[b_idx_k] = A[a_idx_k];
+        }
+        if (ix + 2 * blockDim.x < nx) {
+            int a_idx_k = iy * nx + (ix + 2 * blockDim.x);
+            int b_idx_k = (ix + 2 * blockDim.x) * ny + iy;
+            B[b_idx_k] = A[a_idx_k];
+        }
+        if (ix + 3 * blockDim.x < nx) {
+            int a_idx_k = iy * nx + (ix + 3 * blockDim.x);
+            int b_idx_k = (ix + 3 * blockDim.x) * ny + iy;
+            B[b_idx_k] = A[a_idx_k];
+        }
+    }
+}
+
+// 共享内存优化转置（tiled transpose，避免银行冲突基本版）
+__global__ void transposeShared(float* A, float* B, int nx, int ny) {
+    __shared__ float tile[BLOCK_DIM][BLOCK_DIM];  // 共享内存瓦片（可加padding优化银行冲突，如[BLOCK_DIM][BLOCK_DIM + 4]）
+
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+
+    // 加载阶段：每个线程加载A的元素到共享内存的转置位置
+    int row = by * BLOCK_Y + ty;  // row in A
+    int col = bx * BLOCK_X + tx;  // col in A
+    if (row < ny && col < nx) {
+        tile[tx][ty] = A[row * nx + col];  // tile[col_local][row_local] = A[row_local][col_local]
+    }
+    __syncthreads();  // 同步，确保加载完成
+
+    // 写出阶段：从共享内存写到B的转置位置
+    int out_row = bx * BLOCK_X + tx;  // row in B = col in A
+    int out_col = by * BLOCK_Y + ty;  // col in B = row in A
+    if (out_row < nx && out_col < ny) {
+        B[out_row * ny + out_col] = tile[tx][ty];
     }
 }
 
@@ -141,7 +179,18 @@ int main() {
     CHECK_CUDA(cudaMemcpy(h_B, d_B, nBytes, cudaMemcpyDeviceToHost));
     std::cout << "Unrolled 时间: " << time_unroll << " ms, 带宽: " << bandwidth_unroll << " GB/s (加速 " << (time_naive / time_unroll) << "x)" << std::endl;
 
-    // 简单验证
+    // Shared Memory 优化
+    CHECK_CUDA(cudaMemset(d_B, 0, nBytes));
+    auto start_shared = std::chrono::high_resolution_clock::now();
+    transposeShared<<<grid, block>>>(d_A, d_B, NX, NY);
+    CHECK_CUDA(cudaDeviceSynchronize());
+    auto end_shared = std::chrono::high_resolution_clock::now();
+    double time_shared = std::chrono::duration<double, std::milli>(end_shared - start_shared).count();
+    double bandwidth_shared = (2.0 * NXY * sizeof(float) * 1e-9) / (time_shared * 1e-3);
+    CHECK_CUDA(cudaMemcpy(h_B, d_B, nBytes, cudaMemcpyDeviceToHost));
+    std::cout << "Shared 时间: " << time_shared << " ms, 带宽: " << bandwidth_shared << " GB/s (vs Naive 加速 " << (time_naive / time_shared) << "x)" << std::endl;
+
+    // 简单验证（使用Shared结果）
     bool correct = true;
     for (int i = 0; i < NXY; ++i) {
         if (fabs(h_B_cpu[i] - h_B[i]) > 1e-5) { correct = false; break; }
