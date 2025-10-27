@@ -161,7 +161,7 @@ int sumPartialResults(int* partials, int numBlocks) {
 
 int main() {
     const int size = 1 << 26;  // 数组大小：16M元素（2的幂）
-    const int blockSize = 128;  // 每个块的线程数
+    const int blockSize = 512;  // 每个块的线程数
     const int numBlocks = (size + blockSize - 1) / blockSize;  // 计算块数(向上取整)
 
     // 主机内存分配
